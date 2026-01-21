@@ -2,9 +2,12 @@ package deployer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 
 	"helm.sh/helm/v3/pkg/chart"
@@ -29,6 +32,20 @@ var (
 
 	// ErrNotFound is returned when a requested resource is not found
 	ErrNotFound = errors.New("resource not found")
+)
+
+const (
+	// maxHelmReleaseNameLength is the maximum length allowed for a Helm release name
+	maxHelmReleaseNameLength = 53
+
+	// hashSuffixLength is the length of the hash suffix (8 hex characters = 4 bytes)
+	hashSuffixLength = 8
+)
+
+var (
+	// helmReleaseNameRegex is the regex pattern that Helm uses to validate release names
+	// Pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+	helmReleaseNameRegex = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 )
 
 func NewGatewayParameters(cli apiclient.Client, inputs *deployer.Inputs) *GatewayParameters {
@@ -160,8 +177,75 @@ func (gp *GatewayParameters) PostProcessObjects(ctx context.Context, obj client.
 	return rendered, nil
 }
 
+// generateHelmReleaseName creates a valid Helm release name from a gateway name and namespace.
+// It ensures the name fits within Helm's 53-character limit while maintaining uniqueness
+// and readability. For names that exceed the limit, it truncates and appends a hash suffix
+// to prevent collisions.
+func generateHelmReleaseName(gatewayName, namespace string) string {
+	// If the original name is already valid and within limits, use it as-is
+	if len(gatewayName) <= maxHelmReleaseNameLength && isValidHelmReleaseName(gatewayName) {
+		slog.Debug("Using original gateway name as helm release name",
+			"gateway_name", gatewayName,
+			"namespace", namespace,
+			"release_name", gatewayName,
+		)
+		return gatewayName
+	}
+
+	// For names that need truncation, create a deterministic shortened version
+	// Format: <truncated-name>-<hash>
+	// The hash is based on the full gateway name and namespace to ensure uniqueness
+
+	// Calculate available space for the base name (accounting for separator and hash)
+	maxBaseLength := maxHelmReleaseNameLength - hashSuffixLength - 1 // -1 for the separator
+
+	// Truncate the gateway name to fit within the available space
+	baseName := gatewayName
+	if len(baseName) > maxBaseLength {
+		baseName = baseName[:maxBaseLength]
+	}
+
+	// Ensure the base name ends with a valid character (not a hyphen)
+	baseName = strings.TrimRight(baseName, "-")
+
+	// Generate a deterministic hash from the full gateway name and namespace
+	// This ensures uniqueness even when multiple gateways have similar prefixes
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s.%s", gatewayName, namespace)))
+	hashSuffix := hex.EncodeToString(hash[:4]) // Use first 4 bytes (8 hex chars)
+
+	// Construct the final release name
+	releaseName := fmt.Sprintf("%s-%s", baseName, hashSuffix)
+
+	// Ensure the result is valid (should always be true with our construction)
+	if !isValidHelmReleaseName(releaseName) {
+		// Fallback: if somehow invalid, use just the hash with a valid prefix
+		releaseName = fmt.Sprintf("gw-%s", hashSuffix)
+		slog.Warn("Generated release name was invalid, using fallback",
+			"gateway_name", gatewayName,
+			"namespace", namespace,
+			"invalid_name", fmt.Sprintf("%s-%s", baseName, hashSuffix),
+			"fallback_name", releaseName,
+		)
+	} else {
+		slog.Debug("Generated truncated helm release name",
+			"gateway_name", gatewayName,
+			"namespace", namespace,
+			"release_name", releaseName,
+			"original_length", len(gatewayName),
+			"final_length", len(releaseName),
+		)
+	}
+
+	return releaseName
+}
+
+// isValidHelmReleaseName checks if a name matches Helm's release name validation pattern
+func isValidHelmReleaseName(name string) bool {
+	return len(name) <= maxHelmReleaseNameLength && helmReleaseNameRegex.MatchString(name)
+}
+
 func GatewayReleaseNameAndNamespace(obj client.Object) (string, string) {
-	return obj.GetName(), obj.GetNamespace()
+	return generateHelmReleaseName(obj.GetName(), obj.GetNamespace()), obj.GetNamespace()
 }
 
 func (gp *GatewayParameters) getHelmValuesGenerator(obj client.Object) (deployer.HelmValuesGenerator, error) {
