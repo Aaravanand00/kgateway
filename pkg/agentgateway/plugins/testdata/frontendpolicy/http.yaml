@@ -24,6 +24,7 @@ spec:
     http:
       http2FrameSize: 16384
       maxBufferSize: 2048
+
 ---
 # Output
 output:

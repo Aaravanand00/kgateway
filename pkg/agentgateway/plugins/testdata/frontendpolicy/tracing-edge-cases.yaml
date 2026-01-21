@@ -10,37 +10,53 @@ spec:
       protocol: HTTP
       port: 8080
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-http
+  namespace: default
+spec:
+  ports:
+  - port: 4318
+---
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
-  name: tcp-keepalive-policy
+  name: tracing-http
   namespace: default
 spec:
   targetRefs:
-  - kind: Gateway
-    name: test
-    group: gateway.networking.k8s.io
+    - kind: Gateway
+      name: test
+      group: gateway.networking.k8s.io
   frontend:
-    tcp:
-      keepalive:
-        retries: 3
-        time: 120s
-        interval: 30s
+    tracing:
+      backendRef:
+        name: otel-http
+        namespace: default
+        port: 4318
+      protocol: HTTP
+      clientSampling: "0.5"
+      randomSampling: "0.01"
+
 
 ---
 # Output
 output:
 - Policy:
     frontend:
-      tcp:
-        keepalives:
-          interval: 30s
-          retries: 3
-          time: 120s
-    key: frontend/default/tcp-keepalive-policy:frontend-tcp:default/test
+      tracing:
+        clientSampling: "0.5"
+        providerBackend:
+          port: 4318
+          service:
+            hostname: otel-http.default.svc.cluster.local
+            namespace: default
+        randomSampling: "0.01"
+    key: frontend/default/tracing-http:frontend-tracing:default/test
     name:
       kind: AgentgatewayPolicy
-      name: tcp-keepalive-policy
+      name: tracing-http
       namespace: default
     target:
       gateway:

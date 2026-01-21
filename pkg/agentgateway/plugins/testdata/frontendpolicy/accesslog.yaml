@@ -17,6 +17,8 @@ spec:
         add:
         - expression: 'request.headers["x-request-id"]'
           name: trace.id
+
+
 ---
 # Output
 output:

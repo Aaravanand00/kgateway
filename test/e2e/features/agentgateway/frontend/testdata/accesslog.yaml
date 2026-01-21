@@ -1,0 +1,16 @@
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: accesslog-header
+  namespace: default
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gw
+  frontend:
+    accessLog:
+      attributes:
+        add:
+          - name: x-user-id
+            expression: "request.headers['x-user-id']"

@@ -10,6 +10,15 @@ spec:
       protocol: HTTP
       port: 8080
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-otel
+  namespace: some-other-ns
+spec:
+  ports:
+  - port: 4317
+---
 apiVersion: agentgateway.dev/v1alpha1
 kind: AgentgatewayPolicy
 metadata:
@@ -25,6 +34,11 @@ spec:
       alpnProtocols:
       - custom
       handshakeTimeout: 10s
+      minProtocolVersion: "1.2"
+      maxProtocolVersion: "1.3"
+      cipherSuites:
+      - TLS13_AES_256_GCM_SHA384
+      - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
     tcp:
       keepalive:
         retries: 5
@@ -33,6 +47,12 @@ spec:
     http:
       http2FrameSize: 17000
       maxBufferSize: 1000
+      http1MaxHeaders: 200
+      http1IdleTimeout: 5m
+      http2WindowSize: 65535
+      http2ConnectionWindowSize: 131070
+      http2KeepaliveInterval: 1m
+      http2KeepaliveTimeout: 30s
     accessLog:
       filter: 'response.code != 200'
       attributes:
@@ -59,13 +79,20 @@ spec:
           - expression: 'request.headers["user-agent"]'
             name: http.useragent
 
+
 ---
 # Output
 output:
 - Policy:
     frontend:
       http:
+        http1IdleTimeout: 300s
+        http1MaxHeaders: 200
+        http2ConnectionWindowSize: 131070
         http2FrameSize: 17000
+        http2KeepaliveInterval: 60s
+        http2KeepaliveTimeout: 30s
+        http2WindowSize: 65535
         maxBufferSize: 1000
     key: frontend/default/agw:frontend-http:default/test
     name:
@@ -82,7 +109,12 @@ output:
         alpn:
           protocols:
           - custom
+        cipherSuites:
+        - TLS_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
         handshakeTimeout: 10s
+        maxVersion: TLS_V1_3
+        minVersion: TLS_V1_2
     key: frontend/default/agw:frontend-tls:default/test
     name:
       kind: AgentgatewayPolicy
@@ -127,6 +159,34 @@ output:
       gateway:
         name: test
         namespace: default
+- Policy:
+    frontend:
+      tracing:
+        attributes:
+        - name: http.useragent
+          value: request.headers["user-agent"]
+        clientSampling: "true"
+        protocol: GRPC
+        providerBackend:
+          port: 4317
+          service:
+            hostname: my-otel.some-other-ns.svc.cluster.local
+            namespace: some-other-ns
+        randomSampling: "true"
+        remove:
+        - response.code
+        resources:
+        - name: service.name
+          value: agent-gateway
+    key: frontend/default/agw:frontend-tracing:default/test
+    name:
+      kind: AgentgatewayPolicy
+      name: agw
+      namespace: default
+    target:
+      gateway:
+        name: test
+        namespace: default
 status:
   ancestors:
   - ancestorRef:
@@ -136,9 +196,13 @@ status:
       namespace: default
     conditions:
     - lastTransitionTime: fake
-      message: 'failed to translate tracing backend ref: unable to find the Service
-        some-other-ns/my-otel'
-      reason: PartiallyValid
+      message: Policy accepted
+      reason: Valid
       status: "True"
       type: Accepted
+    - lastTransitionTime: fake
+      message: Attached to all targets
+      reason: Attached
+      status: "True"
+      type: Attached
     controllerName: agentgateway.dev/agentgateway

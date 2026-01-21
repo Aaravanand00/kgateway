@@ -113,16 +113,16 @@ func RunForDirectory[Status any, Output any](t *testing.T, base string, run func
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
-			data := file.AsStringOrFail(t, f)
+			data := strings.ReplaceAll(file.AsStringOrFail(t, f), "\r\n", "\n")
+			idx := strings.Index(data, "\n---\n# Output")
 			inputData := data
-			idx := strings.Index(data, "---\n# Output")
 			if idx != -1 {
-				inputData = data[:idx-1]
+				inputData = data[:idx]
 			}
 			assert.NoError(t, val.ValidateCustomResourceYAML(inputData, nil))
 			mockObjs := []any{}
 			if defaultsErr == nil {
-				mockObjs = append(mockObjs, defaults)
+				mockObjs = append(mockObjs, strings.ReplaceAll(defaults, "\r\n", "\n"))
 			}
 			mockObjs = append(mockObjs, inputData)
 			ctx := BuildMockPolicyContext(t, mockObjs)
@@ -197,9 +197,24 @@ func agwPluginFactory(ctx context.Context, agwCollections *plugins.AgwCollection
 }
 
 func BuildMockPolicyContext(t test.Failer, inputs []any) plugins.PolicyCtx {
+	var splitInputs []any
+	for _, input := range inputs {
+		if s, ok := input.(string); ok {
+			// Normalize newlines before splitting to ensure cross-platform robustness
+			normalized := strings.ReplaceAll(s, "\r\n", "\n")
+			for _, doc := range strings.Split(normalized, "\n---") {
+				trimmed := strings.TrimSpace(doc)
+				if trimmed != "" {
+					splitInputs = append(splitInputs, trimmed)
+				}
+			}
+		} else {
+			splitInputs = append(splitInputs, input)
+		}
+	}
 	return plugins.PolicyCtx{
 		Krt:         krt.TestingDummyContext{},
-		Collections: BuildMockCollection(t, inputs),
+		Collections: BuildMockCollection(t, splitInputs),
 	}
 }
 
