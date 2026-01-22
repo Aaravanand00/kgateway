@@ -11,6 +11,7 @@ import (
 	"istio.io/istio/pkg/util/smallset"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -201,4 +202,90 @@ func newCommonCols(t test.Failer, initObjs ...client.Object) *collections.Common
 
 	gateways.Gateways.WaitUntilSynced(ctx.Done())
 	return commonCols
+}
+
+func TestNamingStrategy(t *testing.T) {
+	gwNameLong := "very-long-gateway-name-that-exceeds-sixty-three-characters-and-even-fifty-three-characters-to-test-truncation-and-hashing"
+	gwNamespace := "default"
+	gwUID := types.UID("12345")
+
+	t.Run("Helm release name should be <= 53 and deterministic", func(t *testing.T) {
+		relName, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gwNameLong,
+				Namespace: gwNamespace,
+				UID:       gwUID,
+			},
+		})
+		assert.LessOrEqual(t, len(relName), 53)
+		assert.Equal(t, "kgw-", relName[:4])
+
+		// Determinism
+		relName2, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gwNameLong,
+				Namespace: gwNamespace,
+				UID:       gwUID,
+			},
+		})
+		assert.Equal(t, relName, relName2)
+	})
+
+	t.Run("Collision avoidance - same name, different namespace", func(t *testing.T) {
+		relName1, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "ns1", UID: "uid1"},
+		})
+		relName2, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "ns2", UID: "uid1"},
+		})
+		assert.NotEqual(t, relName1, relName2)
+	})
+
+	t.Run("Collision avoidance - same name/namespace, different UID", func(t *testing.T) {
+		relName1, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "ns1", UID: "uid1"},
+		})
+		relName2, _ := GatewayReleaseNameAndNamespace(&gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{Name: "gw", Namespace: "ns1", UID: "uid2"},
+		})
+		assert.NotEqual(t, relName1, relName2)
+	})
+
+	t.Run("Gateway identity (.Values.gateway.name) should be <= 63", func(t *testing.T) {
+		gwc := defaultGatewayClass()
+		gw := &gwv1.Gateway{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gwNameLong,
+				Namespace: gwNamespace,
+				UID:       gwUID,
+			},
+			Spec: gwv1.GatewaySpec{
+				GatewayClassName: wellknown.DefaultGatewayClassName,
+				Listeners: []gwv1.Listener{
+					{
+						Protocol: gwv1.HTTPProtocolType,
+						Port:     80,
+						Name:     "http",
+					},
+				},
+			},
+		}
+
+		ctx := t.Context()
+		fakeClient := fake.NewClient(t, gwc, emptyGatewayParameters())
+		gwp := NewGatewayParameters(fakeClient, defaultInputs(t, gwc, gw))
+		fakeClient.RunAndWait(ctx.Done())
+		vals, err := gwp.GetValues(ctx, gw)
+
+		assert.NoError(t, err)
+		gatewayVals := vals["gateway"].(map[string]any)
+		idName := gatewayVals["name"].(string)
+
+		assert.LessOrEqual(t, len(idName), 63)
+		assert.Contains(t, idName, "-") // Should contain hash separator
+
+		// Consistency
+		vals2, _ := gwp.GetValues(ctx, gw)
+		assert.Equal(t, idName, vals2["gateway"].(map[string]any)["name"].(string))
+	})
 }

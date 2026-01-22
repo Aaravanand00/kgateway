@@ -21,6 +21,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/pkg/deployer"
 	"github.com/kgateway-dev/kgateway/v2/pkg/kgateway/helm"
 	"github.com/kgateway-dev/kgateway/v2/pkg/kgateway/wellknown"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/stringutils"
 )
 
 var (
@@ -161,7 +162,7 @@ func (gp *GatewayParameters) PostProcessObjects(ctx context.Context, obj client.
 }
 
 func GatewayReleaseNameAndNamespace(obj client.Object) (string, string) {
-	return obj.GetName(), obj.GetNamespace()
+	return stringutils.HashGatewayName(obj.GetName(), obj.GetNamespace(), string(obj.GetUID())), obj.GetNamespace()
 }
 
 func (gp *GatewayParameters) getHelmValuesGenerator(obj client.Object) (deployer.HelmValuesGenerator, error) {
@@ -410,7 +411,7 @@ func (k *kgatewayParameters) getValues(gw *gwv1.Gateway, gwParam *kgateway.Gatew
 	}
 
 	gtw := &deployer.HelmGateway{
-		Name:             &gw.Name,
+		Name:             ptr.To(stringutils.SafeTruncateAndHash(gw.Name, 63)),
 		GatewayName:      &gw.Name,
 		GatewayNamespace: &gw.Namespace,
 		GatewayClassName: ptr.To(string(gw.Spec.GatewayClassName)),

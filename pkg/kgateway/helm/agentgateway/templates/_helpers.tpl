@@ -11,7 +11,7 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 If release name contains chart name it will be used as a full name.
 */}}
 {{- define "kgateway.gateway.fullname" -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- include "kgateway.gateway.name" . }}
 {{- end }}
 
 {{/*
@@ -20,7 +20,7 @@ Selector labels
 {{- define "kgateway.gateway.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "kgateway.gateway.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-gateway.networking.k8s.io/gateway-name: {{ .Release.Name }}
+gateway.networking.k8s.io/gateway-name: {{ include "kgateway.gateway.name" . }}
 {{- end }}
 
 {{/*

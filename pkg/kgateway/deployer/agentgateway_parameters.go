@@ -17,6 +17,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/pkg/deployer"
 	"github.com/kgateway-dev/kgateway/v2/pkg/deployer/strategicpatch"
 	"github.com/kgateway-dev/kgateway/v2/pkg/kgateway/wellknown"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/stringutils"
 )
 
 // AgentgatewayParametersApplier applies AgentgatewayParameters configurations and overlays.
@@ -258,7 +259,7 @@ func (g *agentgatewayParametersHelmValuesGenerator) getDefaultAgentgatewayHelmVa
 	}
 
 	gtw := &deployer.AgentgatewayHelmGateway{
-		Name: &gw.Name,
+		Name: ptr.To(stringutils.SafeTruncateAndHash(gw.Name, 63)),
 		GatewayClassName: func() *string {
 			s := string(gw.Spec.GatewayClassName)
 			return &s
