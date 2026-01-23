@@ -84,9 +84,6 @@ runs:
 
       # Set inference extension flag
       INFERENCE_EXT_FLAG=""
-      if [[ "${{ inputs.enable-inference-extension }}" == "true" ]]; then
-        INFERENCE_EXT_FLAG="--set inferenceExtension.enabled=true"
-      fi
 
       # Check if additional Helm values file is provided
       ADDITIONAL_VALUES=""

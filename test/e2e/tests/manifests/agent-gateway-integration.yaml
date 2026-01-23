@@ -6,6 +6,3 @@ controller:
   logLevel: debug
   image:
     repository: agentgateway-controller
-
-inferenceExtension:
-  enabled: true

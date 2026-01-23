@@ -378,7 +378,7 @@ Set up a kind cluster and install kgateway with the kubernetes Gateway APIs:
 ```shell
 kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml
 helm upgrade -i --create-namespace --namespace kgateway-system --version v2.3.0-main kgateway-crds oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
-helm upgrade -i --namespace kgateway-system --version v2.3.0-main kgateway oci://cr.kgateway.dev/kgateway-dev/charts/kgateway --set agentgateway.enabled=true --set inferenceExtension.enabled=true
+helm upgrade -i --namespace kgateway-system --version v2.3.0-main kgateway oci://cr.kgateway.dev/kgateway-dev/charts/kgateway --set agentgateway.enabled=true
 ```
 
 #### HTTPRoute
