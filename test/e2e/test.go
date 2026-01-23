@@ -70,7 +70,8 @@ func CreateTestInstallationForCluster(
 			WithClusterContext(clusterContext).
 			WithInstallContext(installContext),
 
-		// Create an assertions provider, and point it to the running installation
+		// Create an assertions provider at the top-level test scope to avoid subtest panics
+		// This ensures that FailNow() is called on the correct *testing.T instance
 		Assertions: assertions.NewProvider(t).
 			WithClusterContext(clusterContext).
 			WithInstallContext(installContext),
