@@ -103,7 +103,7 @@ runs:
         helm upgrade -i -n kgateway-system kgateway ./install/helm/kgateway/ \
           --create-namespace \
           ${EXPERIMENTAL_FLAG} \
-          --set image.tag=${VERSION} --set image.registry=ghcr.io/kgateway-dev \
+          --set image.tag=${VERSION} --set image.registry=${IMAGE_REGISTRY} \
           ${INFERENCE_EXT_FLAG} \
           ${ADDITIONAL_VALUES}
         
@@ -115,7 +115,7 @@ runs:
             --create-namespace \
             ${EXPERIMENTAL_FLAG} \
             --set image.tag=${VERSION} \
-            --set image.registry=ghcr.io/kgateway-dev \
+            --set image.registry=${IMAGE_REGISTRY} \
             --set controller.image.repository=agentgateway-controller \
             --wait \
             ${INFERENCE_EXT_FLAG} \

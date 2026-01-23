@@ -28,7 +28,7 @@ runs:
         go tool helm upgrade --install kgateway ./install/helm/kgateway/ \
           --namespace kgateway-system --create-namespace \
           --set image.tag=${VERSION:-1.0.0-ci1} \
-          --set image.registry=ghcr.io/kgateway-dev \
+          --set image.registry=${IMAGE_REGISTRY} \
           --set inferenceExtension.enabled=true \
           --wait --timeout 5m
 
