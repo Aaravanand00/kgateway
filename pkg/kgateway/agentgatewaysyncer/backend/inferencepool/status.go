@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	inf "sigs.k8s.io/gateway-api-inference-extension/api/v1"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwxv1a1 "sigs.k8s.io/gateway-api/apisx/v1alpha1"
 
 	"github.com/kgateway-dev/kgateway/v2/pkg/kgateway/wellknown"
 	"github.com/kgateway-dev/kgateway/v2/pkg/pluginsdk"
@@ -122,7 +123,7 @@ func reconcilePoolsForRoute(
 	// Which gateways are parents of this route?
 	var parentGws map[types.NamespacedName]struct{}
 	if deletedUID == "" {
-		parentGws = parentGateways(hrt)
+		parentGws = parentGateways(hrt, commonCol)
 	}
 
 	// Pools referenced by this route
@@ -225,7 +226,7 @@ func isPoolBackend(be gwv1.HTTPBackendRef, poolNN types.NamespacedName) bool {
 // referencedGateways returns all Gateways that are parents of any non-deleted
 // HTTPRoute still pointing at the given pool.
 func referencedGateways(
-	routes []ir.HttpRouteIR, poolNN types.NamespacedName,
+	routes []ir.HttpRouteIR, poolNN types.NamespacedName, commonCol *collections.CommonCollections,
 ) map[types.NamespacedName]struct{} {
 	gws := make(map[types.NamespacedName]struct{})
 
@@ -254,12 +255,39 @@ func referencedGateways(
 
 		// Collect every Gateway parentRef on that route
 		for _, pr := range rt.Spec.ParentRefs {
-			if pr.Group != nil && *pr.Group != gwv1.GroupName {
+			// Handle Gateway ParentRefs (existing logic)
+			if pr.Group != nil && string(*pr.Group) != gwv1.GroupName {
+				// Check if this is a ListenerSet ParentRef
+				if string(*pr.Group) == wellknown.XListenerSetGVK.Group &&
+					pr.Kind != nil && string(*pr.Kind) == wellknown.XListenerSetKind {
+					// Resolve ListenerSet to Gateways
+					resolvedGws, err := resolveListenerSetGateways(pr, rt.Namespace, commonCol)
+					if err != nil {
+						logger.Warn("failed to resolve ListenerSet ParentRef in referencedGateways", "error", err, "listenerSet", pr.Name)
+						continue
+					}
+					for gw := range resolvedGws {
+						gws[gw] = struct{}{}
+					}
+				}
 				continue
 			}
 			if pr.Kind != nil && string(*pr.Kind) != wellknown.GatewayKind {
+				// Check if this is a ListenerSet ParentRef with default group
+				if string(*pr.Kind) == wellknown.XListenerSetKind {
+					// Resolve ListenerSet to Gateways
+					resolvedGws, err := resolveListenerSetGateways(pr, rt.Namespace, commonCol)
+					if err != nil {
+						logger.Warn("failed to resolve ListenerSet ParentRef in referencedGateways", "error", err, "listenerSet", pr.Name)
+						continue
+					}
+					for gw := range resolvedGws {
+						gws[gw] = struct{}{}
+					}
+				}
 				continue
 			}
+			// Handle Gateway ParentRefs (existing logic)
 			ns := rt.Namespace
 			if pr.Namespace != nil {
 				ns = string(*pr.Namespace)
@@ -270,16 +298,83 @@ func referencedGateways(
 	return gws
 }
 
+// resolveListenerSetGateways resolves a ListenerSet ParentRef to its constituent Gateways
+func resolveListenerSetGateways(
+	pr gwv1.ParentReference,
+	routeNamespace string,
+	commonCol *collections.CommonCollections,
+) (map[types.NamespacedName]struct{}, error) {
+	gws := make(map[types.NamespacedName]struct{})
+
+	// Determine ListenerSet namespace
+	lsNamespace := routeNamespace
+	if pr.Namespace != nil {
+		lsNamespace = string(*pr.Namespace)
+	}
+
+	// Create a client for XListenerSet
+	lsClient := kclient.NewFiltered[*gwxv1a1.XListenerSet](
+		commonCol.Client,
+		kclient.Filter{ObjectFilter: commonCol.Client.ObjectFilter()},
+	)
+
+	// Get the ListenerSet object
+	ls := lsClient.Get(string(pr.Name), lsNamespace)
+	if ls == nil {
+		return gws, fmt.Errorf("ListenerSet %s/%s not found", lsNamespace, pr.Name)
+	}
+
+	// Extract Gateway from spec.parentRef
+	parentRef := ls.Spec.ParentRef
+	gwNamespace := lsNamespace
+	if parentRef.Namespace != nil {
+		gwNamespace = string(*parentRef.Namespace)
+	}
+	gws[types.NamespacedName{
+		Namespace: gwNamespace,
+		Name:      string(parentRef.Name),
+	}] = struct{}{}
+
+	return gws, nil
+}
+
 // parentGateways returns a map of all parent Gateways referenced by the given HTTPRoute.
-func parentGateways(rt *gwv1.HTTPRoute) map[types.NamespacedName]struct{} {
+func parentGateways(rt *gwv1.HTTPRoute, commonCol *collections.CommonCollections) map[types.NamespacedName]struct{} {
 	gws := make(map[types.NamespacedName]struct{})
 	for _, pr := range rt.Spec.ParentRefs {
-		if pr.Group != nil && *pr.Group != gwv1.GroupName {
+		// Handle Gateway ParentRefs (existing logic)
+		if pr.Group != nil && string(*pr.Group) != gwv1.GroupName {
+			// Check if this is a ListenerSet ParentRef
+			if string(*pr.Group) == wellknown.XListenerSetGVK.Group &&
+				pr.Kind != nil && string(*pr.Kind) == wellknown.XListenerSetKind {
+				// Resolve ListenerSet to Gateways
+				resolvedGws, err := resolveListenerSetGateways(pr, rt.Namespace, commonCol)
+				if err != nil {
+					logger.Warn("failed to resolve ListenerSet ParentRef", "error", err, "listenerSet", pr.Name)
+					continue
+				}
+				for gw := range resolvedGws {
+					gws[gw] = struct{}{}
+				}
+			}
 			continue
 		}
 		if pr.Kind != nil && string(*pr.Kind) != wellknown.GatewayKind {
+			// Check if this is a ListenerSet ParentRef with default group
+			if string(*pr.Kind) == wellknown.XListenerSetKind {
+				// Resolve ListenerSet to Gateways
+				resolvedGws, err := resolveListenerSetGateways(pr, rt.Namespace, commonCol)
+				if err != nil {
+					logger.Warn("failed to resolve ListenerSet ParentRef", "error", err, "listenerSet", pr.Name)
+					continue
+				}
+				for gw := range resolvedGws {
+					gws[gw] = struct{}{}
+				}
+			}
 			continue
 		}
+		// Handle Gateway ParentRefs (existing logic)
 		ns := rt.Namespace
 		if pr.Namespace != nil {
 			ns = string(*pr.Namespace)
@@ -335,7 +430,7 @@ func updatePoolStatus(
 	}
 
 	// Compute the authoritative set of Gateways that still reference the pool
-	activeGws := referencedGateways(routes, poolNN)
+	activeGws := referencedGateways(routes, poolNN, commonCol)
 
 	// Merge any Gateways supplied by the caller (may be nil/no-op)
 	for g := range parentGws {
