@@ -21,6 +21,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/pkg/utils/helmutils"
 	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e"
+	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/assertions"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/helper"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/install"
 	"github.com/kgateway-dev/kgateway/v2/test/testutils"
@@ -107,6 +108,11 @@ func TestCustomGWP(t *testing.T) {
 		},
 	)
 
+	// Create assertions provider with correct test context
+	assertions := assertions.NewProvider(t).
+		WithClusterContext(testInstallation.ClusterContext).
+		WithInstallContext(testInstallation.Metadata)
+
 	// Set the env to the install namespace if it is not already set
 	if !nsEnvPredefined {
 		os.Setenv(testutils.InstallNamespace, installNs)
@@ -149,10 +155,10 @@ func TestCustomGWP(t *testing.T) {
 	testInstallation.InstallAgentgatewayCoreFromLocalChart(ctx)
 
 	// Wait for GatewayClasses to be created
-	testInstallation.Assertions.EventuallyObjectsExist(ctx, &gwv1.GatewayClass{
+	assertions.EventuallyObjectsExist(ctx, &gwv1.GatewayClass{
 		ObjectMeta: metav1.ObjectMeta{Name: wellknown.DefaultGatewayClassName},
 	})
-	testInstallation.Assertions.EventuallyObjectsExist(ctx, &gwv1.GatewayClass{
+	assertions.EventuallyObjectsExist(ctx, &gwv1.GatewayClass{
 		ObjectMeta: metav1.ObjectMeta{Name: wellknown.DefaultAgwClassName},
 	})
 
@@ -218,7 +224,7 @@ func TestCustomGWP(t *testing.T) {
 	}
 
 	// Wait for Gateway to be accepted and deployment created
-	testInstallation.Assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
+	assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
 
 	// Verify the gateway pod has the custom label
 	verifyPodLabel(t, ctx, testInstallation, "custom", "custom-label", "")
@@ -240,7 +246,7 @@ func TestCustomGWP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to upgrade Helm: %v", err)
 	}
-	testInstallation.Assertions.EventuallyKgatewayInstallSucceeded(ctx)
+	assertions.EventuallyKgatewayInstallSucceeded(ctx)
 	chartUriAgentgateway, err := helper.GetLocalChartPath(helmutils.AgentgatewayChartName, "")
 	if err != nil {
 		t.Fatalf("failed to get chart path: %v", err)
@@ -261,7 +267,7 @@ func TestCustomGWP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to upgrade Helm: %v", err)
 	}
-	testInstallation.Assertions.EventuallyAgentgatewayInstallSucceeded(ctx)
+	assertions.EventuallyAgentgatewayInstallSucceeded(ctx)
 
 	// Verify kgateway GatewayClass is updated with new ref
 	r := require.New(t)
@@ -290,7 +296,7 @@ func TestCustomGWP(t *testing.T) {
 	}, 20*time.Second, 200*time.Millisecond)
 
 	// Ensure gateway pods are still running (even though the ParametersRef has changed to non-existent resource)
-	testInstallation.Assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
+	assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
 
 	// Create the kgatewayGWP2 GatewayParameters resource
 	err = testInstallation.Actions.Kubectl().Apply(ctx, []byte(kgatewayGWP2))
@@ -300,7 +306,7 @@ func TestCustomGWP(t *testing.T) {
 
 	// Wait for Gateway to reconcile with new parameters
 	// The Gateway should pick up the new GatewayParameters and update the pods
-	testInstallation.Assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
+	assertions.EventuallyReadyReplicas(ctx, proxyObjectMeta, gomega.Equal(1))
 
 	// Assert that eventually the deployment gateway pod is updated with the new label
 	r.EventuallyWithT(func(c *assert.CollectT) {

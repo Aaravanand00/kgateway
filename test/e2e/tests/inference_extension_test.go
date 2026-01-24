@@ -11,6 +11,7 @@ import (
 	"github.com/kgateway-dev/kgateway/v2/pkg/schemes"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e"
 	. "github.com/kgateway-dev/kgateway/v2/test/e2e/tests"
+	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/assertions"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/cluster"
 	"github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/install"
 	testruntime "github.com/kgateway-dev/kgateway/v2/test/e2e/testutils/runtime"
@@ -47,6 +48,11 @@ func TestInferenceExtension(t *testing.T) {
 		installContext,
 	)
 
+	// Create assertions provider with correct test context
+	assertions := assertions.NewProvider(t).
+		WithClusterContext(testInstallation.ClusterContext).
+		WithInstallContext(testInstallation.Metadata)
+
 	// We register the cleanup function _before_ we actually perform the installation.
 	// This allows us to uninstall kgateway, in case the original installation only completed partially
 	testutils.Cleanup(t, func() {
@@ -58,16 +64,20 @@ func TestInferenceExtension(t *testing.T) {
 
 		// Uninstall InferencePool v1 CRD
 		err := testInstallation.Actions.Kubectl().DeleteFile(ctx, poolCrdManifest)
-		testInstallation.Assertions.Require.NoError(err, "can delete manifest %s", poolCrdManifest)
+		if err != nil {
+			t.Errorf("can delete manifest %s: %v", poolCrdManifest, err)
+		}
 	})
 
 	// Install InferencePool v1 CRD
 	err := testInstallation.Actions.Kubectl().ApplyFile(ctx, poolCrdManifest)
-	testInstallation.Assertions.Require.NoError(err, "can apply manifest %s", poolCrdManifest)
+	if err != nil {
+		t.Fatalf("can apply manifest %s: %v", poolCrdManifest, err)
+	}
 
 	// Install kgateway
 	testInstallation.InstallKgatewayFromLocalChart(ctx)
-	testInstallation.Assertions.EventuallyNamespaceExists(ctx, infExtNs)
+	assertions.EventuallyNamespaceExists(ctx, infExtNs)
 
 	// Run the e2e tests
 	InferenceExtensionSuiteRunner().Run(ctx, t, testInstallation)
