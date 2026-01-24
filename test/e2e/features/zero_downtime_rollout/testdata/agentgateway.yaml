@@ -25,7 +25,8 @@ spec:
     - "example.com"
   rules:
     - backendRefs:
-        - name: example-svc
+        - name: nginx
+          namespace: nginx
           port: 8080
 ---
 apiVersion: v1
