@@ -1,5 +1,13 @@
 # Example: BackendConfigPolicy with Circuit Breakers
 # Applies circuit breaker limits to a Service backend
+# 
+# Note: BackendConfigPolicy also supports other features like:
+# - Load balancing configuration (ringHash, maglev)
+# - Hash policies for consistent hashing
+# - TLS configuration for backend connections
+# - Health checks and outlier detection
+# 
+# For hash policies examples, see: example-backendconfigpolicy-hash-policies.yaml
 ---
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy

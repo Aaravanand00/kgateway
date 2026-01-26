@@ -1,0 +1,188 @@
+# Example: BackendConfigPolicy with Hash Policies for Load Balancing
+# Demonstrates how to configure hash-based load balancing (RingHash and Maglev)
+# with various hash policies including header, cookie, and source IP hashing.
+#
+# Note: hashPolicies were moved from TrafficPolicy to BackendConfigPolicy in v2.0
+# to better align with their backend-specific nature.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: example-gateway
+spec:
+  gatewayClassName: kgateway
+  listeners:
+  - protocol: HTTP
+    port: 8080
+    name: http
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# Service for RingHash load balancing example
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin-ringhash
+  labels:
+    app: httpbin-ringhash
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: httpbin-ringhash
+---
+# BackendConfigPolicy with RingHash and header-based hash policies
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: httpbin-ringhash-policy
+spec:
+  targetRefs:
+  - name: httpbin-ringhash
+    group: ""
+    kind: Service
+  loadBalancer:
+    ringHash:
+      minimumRingSize: 1024
+      maximumRingSize: 2048
+      # Hash policies determine how requests are distributed across backends
+      hashPolicies:
+      # Primary hash policy: use x-user-id header
+      - header:
+          name: "x-user-id"
+        terminal: true  # Stop processing additional policies if this matches
+      # Fallback hash policy: use x-session-id header
+      - header:
+          name: "x-session-id"
+        terminal: false  # Continue to next policy if this doesn't match
+    closeConnectionsOnHostSetChange: true
+---
+# Service for Maglev load balancing example
+apiVersion: v1
+kind: Service
+metadata:
+  name: httpbin-maglev
+  labels:
+    app: httpbin-maglev
+spec:
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  selector:
+    app: httpbin-maglev
+---
+# BackendConfigPolicy with Maglev and cookie/IP-based hash policies
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: httpbin-maglev-policy
+spec:
+  targetRefs:
+  - name: httpbin-maglev
+    group: ""
+    kind: Service
+  loadBalancer:
+    maglev:
+      # Hash policies for Maglev load balancer
+      hashPolicies:
+      # Primary hash policy: use session cookie
+      - cookie:
+          name: "session-id"
+          path: "/api"
+          ttl: 30m
+          httpOnly: true
+          secure: true
+          sameSite: Strict
+        terminal: true
+      # Fallback hash policy: use source IP
+      - sourceIP: {}
+        terminal: false
+---
+# HTTPRoute for RingHash service
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-route-ringhash
+spec:
+  parentRefs:
+  - name: example-gateway
+  hostnames:
+  - "example.com"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /ringhash
+    backendRefs:
+    - name: httpbin-ringhash
+      port: 8080
+---
+# HTTPRoute for Maglev service
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: example-route-maglev
+spec:
+  parentRefs:
+  - name: example-gateway
+  hostnames:
+  - "example.com"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /maglev
+    backendRefs:
+    - name: httpbin-maglev
+      port: 8080
+---
+# Example deployment for testing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin-ringhash
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: httpbin-ringhash
+  template:
+    metadata:
+      labels:
+        app: httpbin-ringhash
+    spec:
+      containers:
+      - name: httpbin
+        image: docker.io/mccutchen/go-httpbin:v2.6.0
+        ports:
+        - containerPort: 8080
+        args:
+        - "-port"
+        - "8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin-maglev
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: httpbin-maglev
+  template:
+    metadata:
+      labels:
+        app: httpbin-maglev
+    spec:
+      containers:
+      - name: httpbin
+        image: docker.io/mccutchen/go-httpbin:v2.6.0
+        ports:
+        - containerPort: 8080
+        args:
+        - "-port"
+        - "8080"
