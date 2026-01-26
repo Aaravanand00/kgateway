@@ -1,0 +1,12 @@
+supported_kinds:
+  - flake
+  - install
+  - design
+  - deprecation
+  - bump
+  - feature
+  - fix
+  - breaking_change
+  - documentation
+  - cleanup
+  - test
