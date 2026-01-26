@@ -423,19 +423,21 @@ func ListenerSetCollection(
 			//}
 
 			for i, l := range ls.Listeners {
-				port, portErr := kubeutils.DetectListenerPortNumber(l.Protocol, l.Port)
-				l.Port = port
-				standardListener := convertListenerSetToListener(l)
+				// Create a copy of the listener to avoid loop variable capture issues
+				listenerCopy := l
+				port, portErr := kubeutils.DetectListenerPortNumber(listenerCopy.Protocol, listenerCopy.Port)
+				listenerCopy.Port = port
+				standardListener := convertListenerSetToListener(listenerCopy)
 				originalStatus := slices.Map(status.Listeners, convertListenerSetStatusToStandardStatus)
 				hostnames, tlsInfo, updatedStatus, programmed := BuildListener(ctx, secrets, configMaps, grants, namespaces,
 					obj, originalStatus, parentGwObj.Spec, standardListener, i, portErr)
-				status.Listeners = slices.Map(updatedStatus, convertStandardStatusToListenerSetStatus(l))
+				status.Listeners = slices.Map(updatedStatus, convertStandardStatusToListenerSetStatus(listenerCopy))
 
 				if controllerName == constants.ManagedGatewayMeshController || controllerName == constants.ManagedGatewayEastWestController {
 					// Waypoint doesn't actually convert the routes to VirtualServices
 					continue
 				}
-				name := utils.InternalGatewayName(obj.Namespace, obj.Name, string(l.Name))
+				name := utils.InternalGatewayName(obj.Namespace, obj.Name, string(listenerCopy.Name))
 
 				allowed, _ := GenerateSupportedKinds(standardListener)
 				pri := ParentInfo{
@@ -443,11 +445,11 @@ func ListenerSetCollection(
 					InternalName:     obj.Namespace + "/" + name,
 					AllowedKinds:     allowed,
 					Hostnames:        hostnames,
-					OriginalHostname: string(ptr.OrEmpty(l.Hostname)),
-					SectionName:      l.Name,
-					Port:             l.Port,
-					Protocol:         l.Protocol,
-					TLSPassthrough:   l.TLS != nil && l.TLS.Mode != nil && *l.TLS.Mode == gwv1.TLSModePassthrough,
+					OriginalHostname: string(ptr.OrEmpty(listenerCopy.Hostname)),
+					SectionName:      listenerCopy.Name,
+					Port:             listenerCopy.Port,
+					Protocol:         listenerCopy.Protocol,
+					TLSPassthrough:   listenerCopy.TLS != nil && listenerCopy.TLS.Mode != nil && *listenerCopy.TLS.Mode == gwv1.TLSModePassthrough,
 				}
 
 				res := ListenerSet{
