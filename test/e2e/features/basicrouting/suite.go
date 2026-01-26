@@ -35,9 +35,9 @@ var (
 	}
 
 	// test cases
+	// Note: CurlPodManifest removed - using native Go HTTP instead
 	setup = base.TestCase{
 		Manifests: []string{
-			testdefaults.CurlPodManifest,
 			gatewayWithRouteManifest,
 		},
 	}
@@ -74,10 +74,17 @@ func (s *testingSuite) TestHeadlessService() {
 }
 
 func (s *testingSuite) assertSuccessfulResponse() {
+	// Use native Go HTTP assertions instead of curl pod
+	// This provides significant performance improvements by eliminating
+	// pod scheduling, kubectl exec, and curl output parsing overhead.
+	//
+	// Note: The gateway service must be accessible from the test runner.
+	// In cluster environments, this typically means using the service FQDN
+	// which the test runner can resolve (requires cluster DNS access or
+	// port-forwarding for external test runners).
 	for _, port := range []int{listenerHighPort, listenerLowPort} {
-		s.TestInstallation.Assertions.AssertEventualCurlResponse(
+		s.TestInstallation.Assertions.AssertEventualCurlResponseNative(
 			s.Ctx,
-			testdefaults.CurlPodExecOpt,
 			[]curl.Option{
 				curl.WithHost(kubeutils.ServiceFQDN(proxyObjectMeta)),
 				curl.WithHostHeader("example.com"),
