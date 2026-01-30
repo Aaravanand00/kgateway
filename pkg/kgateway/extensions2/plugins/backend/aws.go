@@ -134,6 +134,9 @@ func configureAWSAuth(secret *ir.Secret, region string) (*envoy_request_signing_
 		return &envoy_request_signing_v3.AwsRequestSigning{
 			ServiceName: lambdaServiceName,
 			Region:      region,
+			CredentialProvider: &envoy_aws_common_v3.AwsCredentialProvider{
+				AssumeRoleWithWebIdentityProvider: &envoy_aws_common_v3.AssumeRoleWithWebIdentityCredentialProvider{},
+			},
 		}, nil
 	}
 	// handle secret-based auth. configure inline credentials.
