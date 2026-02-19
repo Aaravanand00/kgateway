@@ -79,7 +79,7 @@ func (j *JwksStorePolicyController) Init(ctx context.Context) {
 				continue
 			}
 			if b.Spec.Policies != nil && b.Spec.Policies.MCP != nil && b.Spec.Policies.MCP.Authentication != nil {
-				if s := j.buildJwksSource(kctx, p.Name, p.Namespace, &p.Spec.Backend.MCP.Authentication.JWKS); s != nil {
+				if s := j.buildJwksSource(kctx, p.Name, p.Namespace, &b.Spec.Policies.MCP.Authentication.JWKS); s != nil {
 					toret = append(toret, *s)
 				}
 			}

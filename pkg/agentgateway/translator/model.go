@@ -9,7 +9,6 @@ import (
 
 	udpa "github.com/cncf/xds/go/udpa/type/v1"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 	"istio.io/istio/pkg/config/schema/kind"
 	"istio.io/istio/pkg/util/hash"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -184,10 +183,14 @@ func (c *Config) Equals(other *Config) bool {
 }
 
 func equals(a any, b any) bool {
-	if _, ok := a.(protoreflect.ProtoMessage); ok {
-		if pb, ok := a.(proto.Message); ok {
-			return proto.Equal(pb, b.(proto.Message))
+	// If a is a protobuf message, prefer proto.Equal for comparison.
+	if pa, ok := a.(proto.Message); ok {
+		pb, ok := b.(proto.Message)
+		if !ok {
+			// a is a proto.Message but b is not; they cannot be equal as protobufs.
+			return false
 		}
+		return proto.Equal(pa, pb)
 	}
 	// We do NOT do gogo here. The reason is Kubernetes has hacked up almost-gogo types that do not allow Equals() calls
 

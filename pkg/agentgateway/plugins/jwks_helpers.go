@@ -14,7 +14,7 @@ import (
 // looking up the JWKS store ConfigMap and extracting the serialized JWKS JSON.
 func resolveRemoteJWKSInline(ctx PolicyCtx, jwksURI string) (string, error) {
 	if _, err := url.Parse(jwksURI); err != nil {
-		return "", fmt.Errorf("invalid jwks url %w", err)
+		return "", fmt.Errorf("invalid jwks url: %w", err)
 	}
 	jwksStoreName := jwks.JwksConfigMapNamespacedName(jwksURI)
 	if jwksStoreName == nil {
@@ -26,7 +26,7 @@ func resolveRemoteJWKSInline(ctx PolicyCtx, jwksURI string) (string, error) {
 	}
 	jwksForURI, err := jwks.JwksFromConfigMap(jwksCM)
 	if err != nil {
-		return "", fmt.Errorf("error deserializing jwks ConfigMap %w", err)
+		return "", fmt.Errorf("error deserializing jwks ConfigMap: %w", err)
 	}
 	inline, ok := jwksForURI[jwksURI]
 	if !ok {
